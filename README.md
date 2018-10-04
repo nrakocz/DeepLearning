@@ -17,9 +17,11 @@ mod.genModel()
 mod.struct_model.summary()
 
 lr=1e-3
+
 mod.fit(lr,cycle_length=3,epochs=12,validation_data=(test_input,y_test))
 
 mod.print_full_recent_loss()
+
 mod.print_loss()
 
-===============
+
