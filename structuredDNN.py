@@ -1,3 +1,10 @@
+from keras.callbacks import Callback
+import keras.backend as K
+import numpy as np
+from keras import layers, models, Model, Input
+import keras
+
+
 class mixedInputModel():
 
     def __init__(self,df,y,cat_vars,emb_szs,hidden_layers,hidden_drop,
@@ -168,10 +175,6 @@ def genStructModelInput(df,cat_vars):
 #================================================================
 #================================================================
 #================================================================
-
-from keras.callbacks import Callback
-import keras.backend as K
-import numpy as np
 
 class SGDRScheduler(Callback):
     '''Cosine annealing learning rate scheduler with periodic restarts.
