@@ -8,8 +8,8 @@ cat_sz = [(c, len(data_df_samp[c].cat.categories)+1) for c in cat_vars]
 
 emb_szs = [(c, min(50, (c+1)//2)) for _,c in cat_sz]
 
-mod = mixedInputModel(df,y,cat_vars,emb_szs, [141,140,100],[0.4,0.4,0.4],
-                      emb_drop=0.04,cont_input_drop=0,
+mod = mixedInputModel(df,y,cat_vars,emb_szs, [141,140],[0.4,0.4],
+                      emb_drop=0.02,cont_input_drop=0.02,
                       output_size=1,is_reg=False)
                       
 mod.genModel()
