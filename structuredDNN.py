@@ -260,6 +260,22 @@ class SGDRScheduler(Callback):
 #         '''Set weights to the values from the end of the most recent cycle for best performance.'''
 #         self.model.set_weights(self.best_weights)
 
+def lr_finder(self,min_lr=1e-5,max_lr=1.0,epochs=1,batch_size=256):
+        
+        lr_finder = LRFinder(min_lr=min_lr, 
+                             max_lr=max_lr,                               
+                             epochs=epochs,
+                             batch_size=batch_size,
+                             tr_sample_size = np.ceil(self.df.shape[0])
+                            )
+        
+        
+        self.struct_model.fit(x=[self.cont_df]+self.cat_values,y=[self.y],
+                              batch_size=batch_size,
+                              callbacks=[lr_finder])
+
+        lr_finder.plot_loss()
+        self.lr_finder = lr_finder
 #================================================================
 #================================================================
 #================================================================
