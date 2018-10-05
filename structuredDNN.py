@@ -151,8 +151,7 @@ class mixedInputModel():
         self.schedule = schedule
             
     def loadBestModel(self):
-        self.struct_model.load_weights(self.best_model_path)
-        self.defineAndCompile()
+        self.struct_model = models.load_model(self.best_model_path)
         
     def print_acc(self):
 
