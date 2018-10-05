@@ -160,8 +160,7 @@ class mixedInputModel():
         plt.show()
         
 #================================================================
-#================================================================
-#================================================================
+
 
 def genStructModelInput(df,cat_vars):
     cat_values = []
@@ -175,8 +174,11 @@ def genStructModelInput(df,cat_vars):
 
 #================================================================
 #================================================================
+# Learning Rate schedulers (SGDR & LR-FINDER) 
+# Implementation by Jeremy Jordan. 
+# (https://gist.github.com/jeremyjordan)
 #================================================================
-
+#================================================================
 class SGDRScheduler(Callback):
     '''Cosine annealing learning rate scheduler with periodic restarts.
     # Usage
