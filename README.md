@@ -3,6 +3,9 @@ Deep Learning related repo
 
 structuredDNN.py
 ==============
+My implementation of Fastai's columnar-data architecture and fastai's course.
+------------------
+
 Usage example:
 cat_sz = [(c, len(data_df_samp[c].cat.categories)+1) for c in cat_vars]
 
