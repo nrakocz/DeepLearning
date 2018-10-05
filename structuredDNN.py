@@ -88,7 +88,7 @@ class mixedInputModel():
         # COMPILE MODEL
         self.opt = self.opt if self.opt is not None else keras.optimizers.Adam() # keras.optimizers.SGD(momentum=0.9)
         self.struct_model.compile(optimizer=self.opt, loss=self.loss,metrics=self.metrics)
-#         self.init_weights = self.struct_model.get_weights()
+        self.init_weights = self.struct_model.get_weights()
         
     
     
