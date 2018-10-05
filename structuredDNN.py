@@ -175,7 +175,7 @@ def genStructModelInput(df,cat_vars):
 #================================================================
 #================================================================
 # Learning Rate schedulers (SGDR & LR-FINDER) 
-# Implementation by Jeremy Jordan. 
+# Based on Implementation by Jeremy Jordan. 
 # (https://gist.github.com/jeremyjordan)
 #================================================================
 #================================================================
