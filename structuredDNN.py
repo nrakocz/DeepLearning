@@ -158,7 +158,26 @@ class mixedInputModel():
         plt.ylabel('lr')
         plt.xlabel('batch')
         plt.show()
+   
+    
+    def find_lr(self,min_lr=1e-5,max_lr=1.0,epochs=1,batch_size=256,linear=False):
         
+        lr_finder = LRFinder(min_lr=min_lr, 
+                             max_lr=max_lr,                               
+                             epochs=epochs,
+                             batch_size=batch_size,
+                             tr_sample_size = np.ceil(self.df.shape[0]),
+                             linear=linear
+                            )
+        
+        w = self.struct_model.get_weights()
+        self.struct_model.fit(x=[self.cont_df]+self.cat_values,y=[self.y],
+                              batch_size=batch_size,
+                              callbacks=[lr_finder])
+        self.struct_model.set_weights(w)
+
+        lr_finder.plot_loss()
+        self.lr_finder = lr_finder
 #================================================================
 
 
