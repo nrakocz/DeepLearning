@@ -127,7 +127,7 @@ class mixedInputModel():
         
         # SAVE BEST
         if(save_best):
-            model_path = model_path if model_path is not None else './BestDNN_Model'
+            model_path = model_path if model_path is not None else './BestDNN_Model.h5'
             save_best = keras.callbacks.ModelCheckpoint(model_path, 
                                                     monitor='val_loss',
                                                     verbose=0, 
