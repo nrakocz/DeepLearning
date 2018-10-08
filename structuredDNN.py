@@ -21,8 +21,8 @@ class mixedInputModel():
         
         # CATEGORICAL FEATURES AS SEPERATE ARRAYS
         self.cat_values = []
-        cat_df = df[cat_vars]
-        for n,c in cat_df.items():
+        self.cat_df = self.df[cat_vars]
+        for n,c in self.cat_df.items():
             self.cat_values.append(c.values.astype('float32'))
 
         # CREATE EMBEDDING LAYERS
