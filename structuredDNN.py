@@ -1,3 +1,16 @@
+import keras
+from keras import layers, models, Model, Input
+from keras.callbacks import Callback
+import keras.backend as K
+
+import numpy as np
+import pandas as pd
+from pandas.api.types import is_string_dtype, is_numeric_dtype
+
+import matplotlib.pyplot as plt
+import pdb
+
+
 class mixedInputModel():
 
     def __init__(self,df,y,cat_vars,emb_szs,hidden_layers,hidden_drop,
@@ -43,7 +56,7 @@ class mixedInputModel():
 
 
         # CONTINOUS FEATURES AS INPUT
-        self.cont_df = df.drop(cat_vars,axis=1).values.astype('float32')    
+        self.cont_df = self.df.drop(self.cat_vars,axis=1).values.astype('float32')    
         self.cont_input = layers.Input(shape=(self.cont_df.shape[1],))
         cont = layers.Dropout(self.cont_input_drop)(self.cont_input)
 
@@ -111,14 +124,14 @@ class mixedInputModel():
     def fit(self, lr, batch_size = 128,epochs = 1, val_split = 0.0,validation_data=None,callbacks=None,
            cycle_length=1,mult_factor=1,sgdr=True,save_best=True,model_path=None):
         
-        
+        K.set_value(self.struct_model.optimizer.lr, lr)
         callbacks = callbacks if callbacks is not None else []
         
         # LR SCHEDULE
         schedule = SGDRScheduler(min_lr=lr/10,
                                  max_lr=lr,
                                  batch_size=batch_size,
-                                 tr_sample_size = np.ceil((1-val_split)*df.shape[0]),
+                                 tr_sample_size = np.ceil((1-val_split)*self.df.shape[0]),
                                  lr_decay=1,
                                  cycle_length=cycle_length,
                                  mult_factor=mult_factor)
@@ -211,6 +224,7 @@ class mixedInputModel():
     
     def find_lr(self,min_lr=1e-5,max_lr=1.0,epochs=1,batch_size=256,linear=False):
         
+       
         lr_finder = LRFinder(min_lr=min_lr, 
                              max_lr=max_lr,                               
                              epochs=epochs,
@@ -227,6 +241,20 @@ class mixedInputModel():
 
         lr_finder.plot_loss()
         self.lr_finder = lr_finder
+        
+    def getEmbeddings(self,data_df):
+        """get dictionary of Data frames containing the Embedding wiegths learned by the network
+        input data_df is needed for categoreis names"""
+        
+        self.embeddings = {}
+        for i,l in enumerate(self.struct_model.get_weights()):
+            if(i<=len(self.cat_vars)-1):
+                col_name = self.cat_vars[i]
+                embedding_names = ['UNKNOWN'] + list(data_df[col_name].cat.categories)
+                self.embeddings[col_name] = pd.DataFrame(l,index=embedding_names)
+                
+        return self.embeddings
+                
         
 #================================================================
 #================================================================
@@ -247,9 +275,7 @@ def genStructModelInput(df,cat_vars):
 #================================================================
 #================================================================
 
-from keras.callbacks import Callback
-import keras.backend as K
-import numpy as np
+
 
 class SGDRScheduler(Callback):
     '''Cosine annealing learning rate scheduler with periodic restarts.
