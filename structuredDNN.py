@@ -15,7 +15,8 @@ class mixedInputModel():
 
     def __init__(self,df,y,cat_vars,emb_szs,hidden_layers,hidden_drop,
                     emb_drop=0,cont_input_drop=0,output_size=1,use_bn=True,
-                 is_reg=True,hidden_activation='relu',opt = None, metrics=['acc'],is_multi=False):
+                 is_reg=True,hidden_activation='relu',opt = None, metrics=['acc'],is_multi=False,
+                debug=False):
     
         self.df,self.y, self.cat_vars, self.emb_szs                = df,y, cat_vars, emb_szs 
         self.hidden_layers, self.hidden_drop, self.emb_drop = hidden_layers, hidden_drop, emb_drop
@@ -29,6 +30,7 @@ class mixedInputModel():
         self.loss =  'mse' if is_reg else 'binary_crossentropy' if self.is_multi \
                         else 'categorical_crossentropy' if (output_size>1) else 'binary_crossentropy'
         self.log = None
+        self.debug = debug
      
     def genModel(self,):
         
@@ -149,7 +151,8 @@ class mixedInputModel():
                                                     period=1)
             callbacks.append(save_best)
             self.best_model_path=model_path
-
+        
+        if(self.debug==True): pdb.set_trace()
         log=self.struct_model.fit(x=self.input_data_reform,y=[self.y],
                  batch_size=batch_size,epochs=epochs,callbacks=callbacks,validation_split=val_split,
                              validation_data=validation_data)
