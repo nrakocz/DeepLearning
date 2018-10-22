@@ -169,6 +169,9 @@ class mixedInputModel():
     def loadBestModel(self):
         self.struct_model = models.load_model(self.best_model_path)
         
+    def loadModel(self,model_path):
+        self.struct_model = models.load_model(model_path)
+        
     def print_acc(self):
 
         # summarize history for accuracy
