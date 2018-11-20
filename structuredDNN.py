@@ -16,7 +16,7 @@ class mixedInputModel():
     def __init__(self,df,y,cat_vars,emb_szs,hidden_layers,hidden_drop,
                     emb_drop=0,cont_input_drop=0,output_size=1,use_bn=True,
                  is_reg=True,hidden_activation='relu',opt = None, metrics=['acc'],is_multi=False,
-                debug=False):
+                debug=False,prefix='',bn_start=False):
     
         self.df,self.y, self.cat_vars, self.emb_szs                = df,y, cat_vars, emb_szs 
         self.hidden_layers, self.hidden_drop, self.emb_drop = hidden_layers, hidden_drop, emb_drop
@@ -31,8 +31,33 @@ class mixedInputModel():
                         else 'categorical_crossentropy' if (output_size>1) else 'binary_crossentropy'
         self.log = None
         self.debug = debug
+        self.prefix=prefix
+        self.bn_start = bn_start
+        self.dnn_tensors = []
+        self.best_model_path = None
      
     def genModel(self,):
+        
+        cat_vars_ind = False
+        cont_vars_ind= False
+        # INPUTS (TENSORS & DATA)
+        self.input_tensors = []
+        self.input_data_reform = []
+        
+        # CONTINOUS FEATURES AS INPUT
+        if(self.df.shape[1]>len(self.cat_vars)):
+            cont_vars_ind=True
+            self.cont_df = self.df.drop(self.cat_vars,axis=1).values.astype('float32')    
+            self.cont_input = layers.Input(shape=(self.cont_df.shape[1],))
+            
+            if(self.bn_start):
+                cont = layers.BatchNormalization()(self.cont_input)
+                cont = layers.Dropout(self.cont_input_drop)(cont)
+            else:
+                cont = layers.Dropout(self.cont_input_drop)(self.cont_input)
+                
+            self.input_tensors.append(self.cont_input)
+            self.input_data_reform.append(self.cont_df)
         
         # CATEGORICAL FEATURES AS SEPERATE ARRAYS
         self.cat_values = []
@@ -44,48 +69,58 @@ class mixedInputModel():
         self.embeddings = []
         self.emb_inputs = []
         self.emb_models = []
+        
+        if(len(self.cat_vars)>0): #check we have cat vars
+            cat_vars_ind = True
+            for dict_sz,out_sz in self.emb_szs:
+                input_layer_i = layers.Input(shape=(1,))
+                emb_layer_i = layers.Embedding(dict_sz, out_sz, input_length=1)(input_layer_i)
+                self.emb_inputs.append(input_layer_i)
+                self.embeddings.append(emb_layer_i)
+                self.emb_models.append(keras.Model(inputs = input_layer_i, outputs = emb_layer_i))
 
-        for dict_sz,out_sz in self.emb_szs:
-            input_layer_i = layers.Input(shape=(1,))
-            emb_layer_i = layers.Embedding(dict_sz, out_sz, input_length=1)(input_layer_i)
-            self.emb_inputs.append(input_layer_i)
-            self.embeddings.append(emb_layer_i)
-            self.emb_models.append(keras.Model(inputs = input_layer_i, outputs = emb_layer_i))
+            ent_emb = keras.layers.Concatenate(name=self.prefix+'Embedding_layer')(self.embeddings)
+            ent_emb = layers.Flatten()(ent_emb)
+            ent_emb = layers.Dropout(self.emb_drop)(ent_emb)
+            self.input_tensors += self.emb_inputs
+            self.input_data_reform += self.cat_values
 
-        ent_emb = keras.layers.Concatenate(name='Embedding_layer')(self.embeddings)
-        ent_emb = layers.Flatten()(ent_emb)
-        ent_emb = layers.Dropout(self.emb_drop)(ent_emb)
-
-
-        # CONTINOUS FEATURES AS INPUT
-        self.cont_df = self.df.drop(self.cat_vars,axis=1).values.astype('float32')    
-        self.cont_input = layers.Input(shape=(self.cont_df.shape[1],))
-        cont = layers.Dropout(self.cont_input_drop)(self.cont_input)
-
-        # SAVE INPUT (TENSORS & DATA)
-        self.input_tensors = [self.cont_input]+self.emb_inputs
-        self.input_data_reform = [self.cont_df]+self.cat_values
+        
+#         self.input_tensors = [self.cont_input]+self.emb_inputs
+#         self.input_data_reform = [self.cont_df]+self.cat_values
         
         # CONCATENATE CONTINOUS AND EMBEDDED CATEGORICAL
-        self.joint_tensor = keras.layers.Concatenate(name='All_features')([ent_emb,cont])
+        if(cat_vars_ind and cont_vars_ind):
+            self.joint_tensor = keras.layers.Concatenate(name=self.prefix+'All_features')([ent_emb,cont])
+        elif(cat_vars_ind):
+            self.joint_tensor = ent_emb
+        else:
+            self.joint_tensor = cont
         
 
         # DENSE HIDDEN LAYERS
-        self.output_tensor = self.simpleDNN(self.joint_tensor)
+        self.output_tensor,self.mid_output_tensors = self.simpleDNN(self.joint_tensor)
                    
         # DEFINE AND COMPILE MODEL
         self.defineAndCompile()
     
     
     
-    def simpleDNN(self,nn_input_tensor):
+    def simpleDNN(self,nn_input_tensor,hidden_layers=None,hidden_drop=None):
         
+        mid_outputs = []
         x = layers.Lambda(lambda x:x)(nn_input_tensor)
         
+        if(hidden_layers is None): hidden_layers,hidden_drop = self.hidden_layers,self.hidden_drop
+            
         for l,dr in zip(self.hidden_layers,self.hidden_drop):
-            x = layers.Dense(l,activation=self.hidden_activation,)(x)
+            l_out = int(l/(1-dr))
+            x = layers.Dense(l_out,activation=self.hidden_activation,)(x)
+            mid_outputs.append(x)
             if self.use_bn: x = layers.BatchNormalization()(x)
             x = layers.Dropout(dr)(x)
+            
+     
         
         # OUTPUT  ACTIVATION
         if( (self.output_size>1) and (not self.is_reg)) and (not self.is_multi):
@@ -93,15 +128,17 @@ class mixedInputModel():
         else:
             self.output_activation = 'sigmoid'
         
-        return layers.Dense(self.output_size,name='Output_Layer',activation=self.output_activation)(x)        
-        
+        return layers.Dense(self.output_size,name=self.prefix+'Output_Layer',activation=self.output_activation)(x),mid_outputs
     
     def defineAndCompile(self):
         
         self.struct_model = keras.Model(inputs=self.input_tensors,outputs=self.output_tensor)
-               
-        # COMPILE MODEL
         self.opt = self.opt if self.opt is not None else keras.optimizers.Adam() # keras.optimizers.SGD(momentum=0.9)
+        self.compileModel(opt=self.opt)
+        
+        # COMPILE MODEL
+    def compileModel(self,opt=None):
+        if(opt is not None): self.opt = opt 
         self.struct_model.compile(optimizer=self.opt, loss=self.loss,metrics=self.metrics)
         self.init_weights = self.struct_model.get_weights()
         
@@ -114,7 +151,7 @@ class mixedInputModel():
         self.input_data_reform.append(new_df)
         
         # CONCATENATE NEW FEATURES
-        self.joint_tensor = keras.layers.Concatenate(name='new_joint_features')([self.joint_tensor,concat_tensor])
+        self.joint_tensor = keras.layers.Concatenate(name=self.prefix+'new_joint_features')([self.joint_tensor,concat_tensor])
        
         # PASS THROUGH DNN
         self.output_tensor = self.simpleDNN(self.joint_tensor)
@@ -124,12 +161,13 @@ class mixedInputModel():
         
     
     def fit(self, lr, batch_size = 128,epochs = 1, val_split = 0.0,validation_data=None,callbacks=None,
-           cycle_length=1,mult_factor=1,sgdr=True,save_best=True,model_path=None):
+           cycle_length=1,mult_factor=1,sgdr=True,flr=False,save_best=False,model_path=None,early_stopping=True,
+            patience=20,monitor='val_loss',baseline=None):
         
         K.set_value(self.struct_model.optimizer.lr, lr)
         callbacks = callbacks if callbacks is not None else []
         
-        # LR SCHEDULE
+        # LR SCHEDULE - SGDR
         schedule = SGDRScheduler(min_lr=lr/10,
                                  max_lr=lr,
                                  batch_size=batch_size,
@@ -139,12 +177,17 @@ class mixedInputModel():
                                  mult_factor=mult_factor)
         if sgdr: callbacks.append(schedule)
         
-        
+        # LR SCHEDULE - FACTOR DECREASE
+        if(flr):
+            f_schedule = keras.callbacks.ReduceLROnPlateau(monitor=monitor, factor=0.1, patience=10, 
+                                          min_delta=0.0001, cooldown=5, min_lr=0)
+            callbacks.append(f_schedule)
+
         # SAVE BEST
         if(save_best):
             model_path = model_path if model_path is not None else './BestDNN_Model.h5'
             save_best = keras.callbacks.ModelCheckpoint(model_path, 
-                                                    monitor='val_loss',
+                                                    monitor= monitor,
                                                     verbose=0, 
                                                     save_best_only=True, save_weights_only=False,
                                                     mode='auto',
@@ -152,6 +195,21 @@ class mixedInputModel():
             callbacks.append(save_best)
             self.best_model_path=model_path
         
+        # EARLY STOPPING
+        if(early_stopping):
+            early_stop = keras.callbacks.EarlyStopping(monitor=monitor, 
+                                          min_delta=0, 
+                                          patience=patience, 
+                                          verbose=0, 
+                                          mode='auto', 
+                                          baseline=baseline, 
+                                          restore_best_weights=True)
+            callbacks.append(early_stop)
+            
+            
+            
+            
+        # FIT    
         if(self.debug==True): pdb.set_trace()
         log=self.struct_model.fit(x=self.input_data_reform,y=[self.y],
                  batch_size=batch_size,epochs=epochs,callbacks=callbacks,validation_split=val_split,
@@ -167,10 +225,17 @@ class mixedInputModel():
         self.schedule = schedule
             
     def loadBestModel(self):
-        self.struct_model = models.load_model(self.best_model_path)
+        if(self.best_model_path is not None):
+            self.struct_model = models.load_model(self.best_model_path)
+        else:
+            print('BEST MODEL NOT LOADED! model_path DOES NOT EXIST!')
         
     def loadModel(self,model_path):
+        
         self.struct_model = models.load_model(model_path)
+        
+    def saveModel(self,model_path):
+        self.struct_model.save(model_path)
         
     def print_acc(self):
 
@@ -261,6 +326,67 @@ class mixedInputModel():
                 
         return self.embeddings
                 
+    def getMidModel(self,index):
+        return keras.Model(inputs=self.input_tensors,outputs=self.mid_output_tensors[index])
+    
+    
+    def getMidTensor(self,index):
+        return self.mid_output_tensors[index]
+        
+    def addModel2DNN(self,new_df,input_tensor,concat_tensor,
+                 tensor_index=-1, hidden_layers=None,hidden_drop=None):
+        """
+        input_tensor: input tensor of the added model
+        concat_tensor: output tensor of the added model
+        tensor_index: if dnn, index if the desired tensor in the dnn list of tensors"""
+        # APPEND NEW INPUT
+        self.input_tensors.append(input_tensor)
+        self.input_data_reform.append(new_df)
+        
+        # CONCATENATE NEW TENSOR
+        tensor_to_join_with = self.mid_output_tensors[tensor_index]
+        self.new_joint_tensor = keras.layers.Concatenate(name=self.prefix+'new_joint')([tensor_to_join_with,concat_tensor])
+       
+        # PASS THROUGH DNN
+        self.mid_output_tensors = self.mid_output_tensors[:tensor_index] # remove previous
+        self.output_tensor,mid_output_tensors = self.simpleDNN(self.joint_tensor,hidden_layers=hidden_layers,hidden_drop=hidden_drop)
+        
+        
+        self.mid_output_tensors = self.mid_output_tensors + [tensor_to_join_with] + mid_output_tensors
+        
+        # DEFINE AND COMPILE
+        self.defineAndCompile()
+    
+    def addConst2DNN(self,new_input, tensor_index=-1,ni_drop=0.0,oi_drop=0.0, hidden_layers=None,hidden_drop=None):
+        """
+        new_input: constants to be added to model        
+        tensor_index: index if the desired tensor in the dnn list of tensors"""
+        
+     
+        new_input_tensor = layers.Input(shape=(new_input.shape[1],))
+        
+        # APPEND NEW INPUT
+        self.input_tensors.append(new_input_tensor)
+        self.input_data_reform.append(new_input)
+        
+        # CONCATENATE NEW TENSOR
+        tensor_to_join_with = self.mid_output_tensors[tensor_index]
+        
+        x1 = layers.Dropout(ni_drop)(new_input_tensor)
+        if self.use_bn: x2 = layers.BatchNormalization()(tensor_to_join_with)
+        x2 = layers.Dropout(oi_drop)(x2)
+        
+        self.new_joint_tensor = keras.layers.Concatenate(name=self.prefix+'new_joint')([x1,x2])
+       
+        # PASS THROUGH DNN
+        self.mid_output_tensors = self.mid_output_tensors[:tensor_index] # remove previous
+        self.output_tensor,mid_output_tensors = self.simpleDNN(self.new_joint_tensor,hidden_layers=hidden_layers,hidden_drop=hidden_drop)
+        
+        
+        self.mid_output_tensors = self.mid_output_tensors + [tensor_to_join_with] + mid_output_tensors
+        
+        # DEFINE AND COMPILE
+        self.defineAndCompile()
         
 #================================================================
 #================================================================
@@ -272,9 +398,12 @@ def genStructModelInput(df,cat_vars):
     cat_df = df[cat_vars]
     for n,c in cat_df.items():
         cat_values.append(c.values.astype('float32'))
-        
-    cont_df = df.drop(cat_vars,axis=1).values.astype('float32') 
-    return [cont_df]+cat_values
+    
+    if(df.shape[1]>len(cat_vars)):
+        cont_df = df.drop(cat_vars,axis=1).values.astype('float32') 
+        return [cont_df]+cat_values
+    else:
+        return cat_values
 
 
 #================================================================
