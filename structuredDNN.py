@@ -1,5 +1,5 @@
 import keras
-from keras import layers, models, Model, Input
+from keras import layers, models, Model, Input, regularizers
 from keras.callbacks import Callback
 import keras.backend as K
 
@@ -13,7 +13,7 @@ import pdb
 
 class mixedInputModel():
 
-    def __init__(self,df,y,cat_vars,emb_szs,hidden_layers,hidden_drop,
+    def __init__(self,df,y,cat_vars,emb_szs,hidden_layers,hidden_drop,l2=None,
                     emb_drop=0,cont_input_drop=0,output_size=1,use_bn=True,
                  is_reg=True,hidden_activation='relu',opt = None, metrics=['acc'],is_multi=False,
                 debug=False,prefix='',bn_start=False):
@@ -35,6 +35,7 @@ class mixedInputModel():
         self.bn_start = bn_start
         self.dnn_tensors = []
         self.best_model_path = None
+        self.l2 = l2
      
     def genModel(self,):
         
@@ -106,16 +107,17 @@ class mixedInputModel():
     
     
     
-    def simpleDNN(self,nn_input_tensor,hidden_layers=None,hidden_drop=None):
+    def simpleDNN(self,nn_input_tensor,hidden_layers=None,hidden_drop=None,balance_dr=False,l2=None):
         
         mid_outputs = []
         x = layers.Lambda(lambda x:x)(nn_input_tensor)
         
-        if(hidden_layers is None): hidden_layers,hidden_drop = self.hidden_layers,self.hidden_drop
-            
+        if(hidden_layers is None): hidden_layers,hidden_drop,l2 = self.hidden_layers,self.hidden_drop,self.l2
+        l2_reg = None if l2 is None else regularizers.l2(l=l2)
+        
         for l,dr in zip(self.hidden_layers,self.hidden_drop):
-            l_out = int(l/(1-dr))
-            x = layers.Dense(l_out,activation=self.hidden_activation,)(x)
+            l_out = int(l/(1-dr)) if balance_dr else l
+            x = layers.Dense(l_out,activation=self.hidden_activation,kernel_regularizer=l2_reg)(x)
             mid_outputs.append(x)
             if self.use_bn: x = layers.BatchNormalization()(x)
             x = layers.Dropout(dr)(x)
@@ -162,7 +164,7 @@ class mixedInputModel():
     
     def fit(self, lr, batch_size = 128,epochs = 1, val_split = 0.0,validation_data=None,callbacks=None,
            cycle_length=1,mult_factor=1,sgdr=True,flr=False,save_best=False,model_path=None,early_stopping=True,
-            patience=20,monitor='val_loss',baseline=None):
+            patience=20,monitor='val_loss',baseline=None,sample_weight=None):
         
         K.set_value(self.struct_model.optimizer.lr, lr)
         callbacks = callbacks if callbacks is not None else []
@@ -213,7 +215,7 @@ class mixedInputModel():
         if(self.debug==True): pdb.set_trace()
         log=self.struct_model.fit(x=self.input_data_reform,y=[self.y],
                  batch_size=batch_size,epochs=epochs,callbacks=callbacks,validation_split=val_split,
-                             validation_data=validation_data)
+                             validation_data=validation_data,sample_weight=sample_weight)
         
         
         if(self.log is None):
